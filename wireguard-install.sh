@@ -131,7 +131,7 @@ function installWireGuard() {
 		apt-get update
 		apt-get install -y wireguard iptables openresolv qrencode
 	elif [[ ${OS} == 'debian' ]]; then
-		if ! grep -rqs "^deb .* buster-backports" /etc/apt/; then
+		if [[ -z $(grep -r "^deb .* buster-backports" /etc/apt) ]]; then
 			echo "deb http://deb.debian.org/debian buster-backports main" >/etc/apt/sources.list.d/backports.list
 			apt-get update
 		fi
