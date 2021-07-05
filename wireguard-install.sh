@@ -155,7 +155,7 @@ function installWireGuard() {
 		pacman -S --needed --noconfirm wireguard-tools qrencode
 	fi
 
-	[[ $installNetfilterFullConeNat == y ]] && installNetfilterFullConeNat
+	[[ $netfilterFullConeNat == y ]] && installNetfilterFullConeNat
 
 	# Make sure the directory exists (this does not seem the be the case on fedora)
 	mkdir /etc/wireguard >/dev/null 2>&1
