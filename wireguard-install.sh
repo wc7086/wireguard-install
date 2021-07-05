@@ -114,7 +114,7 @@ function installQuestions() {
 	# Cloudflare DNS by default
 	read -rp "DNS resolver to use for the clients: " -e -i 1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001 CLIENT_DNS
 
-	read -rp "Install Netfilter-Full-Cone-Nat: " -e -i n netfilterFullConeNat
+	[[ -z $(pgrep firewalld) ]] && read -rp "Install Netfilter-Full-Cone-Nat: " -e -i n netfilterFullConeNat
 
 	echo ""
 	echo "Okay, that was all I needed. We are ready to setup your WireGuard server now."
