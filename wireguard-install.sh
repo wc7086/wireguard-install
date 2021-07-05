@@ -85,8 +85,8 @@ function installQuestions() {
 
 	# Detect public IPv6 interface and pre-fill for the user
 	SERVER_IPV6_PUB_IP="$(ip -6 addr | sed -ne 's|^.* inet6 \([^/]*\)/.* scope global.*$|\1|p' | head -1)"
-	SERVER_IPV6_NIC="$(ip -6 route ls | grep $SERVER_IPV6_PUB_IP | grep -Po '(?<=dev )(\S+)' | head -1)"
-	if [[ ${SERVER_IPV6_NIC} != ${SERVER_NIC} ]]; then
+	[[ -n $SERVER_IPV6_PUB_IP ]] SERVER_IPV6_NIC="$(ip -6 route ls | grep $SERVER_IPV6_PUB_IP | grep -Po '(?<=dev )(\S+)' | head -1)"
+	if [[ -n $SERVER_IPV6_NIC ]] && [[ ${SERVER_IPV6_NIC} != ${SERVER_NIC} ]]; then
 		until [[ ${SERVER_IPV6_PUB_NIC} =~ ^[a-zA-Z0-9_]+$ ]]; do
 			read -rp "Public IPv6 interface: " -e -i "${SERVER_IPV6_NIC}" SERVER_IPV6_PUB_NIC
 		done
