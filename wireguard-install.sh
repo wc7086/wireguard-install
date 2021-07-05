@@ -114,6 +114,8 @@ function installQuestions() {
 	# Cloudflare DNS by default
 	read -rp "DNS resolver to use for the clients: " -e -i 1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001 CLIENT_DNS
 
+	read -rp "Install Netfilter-Full-Cone-Nat: " -e -i n netfilterFullConeNat
+
 	echo ""
 	echo "Okay, that was all I needed. We are ready to setup your WireGuard server now."
 	echo "You will be able to generate a client at the end of the installation."
@@ -153,6 +155,8 @@ function installWireGuard() {
 		pacman -S --needed --noconfirm wireguard-tools qrencode
 	fi
 
+	[[ $installNetfilterFullConeNat == y ]] && installNetfilterFullConeNat
+
 	# Make sure the directory exists (this does not seem the be the case on fedora)
 	mkdir /etc/wireguard >/dev/null 2>&1
 
@@ -185,8 +189,13 @@ PrivateKey = ${SERVER_PRIV_KEY}" >"/etc/wireguard/${SERVER_WG_NIC}.conf"
 		echo "PostUp = firewall-cmd --add-port ${SERVER_PORT}/udp && firewall-cmd --add-rich-rule='rule family=ipv4 source address=${FIREWALLD_IPV4_ADDRESS}/24 masquerade' && firewall-cmd --add-rich-rule='rule family=ipv6 source address=${FIREWALLD_IPV6_ADDRESS}/24 masquerade'
 PostDown = firewall-cmd --remove-port ${SERVER_PORT}/udp && firewall-cmd --remove-rich-rule='rule family=ipv4 source address=${FIREWALLD_IPV4_ADDRESS}/24 masquerade' && firewall-cmd --remove-rich-rule='rule family=ipv6 source address=${FIREWALLD_IPV6_ADDRESS}/24 masquerade'" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
 	else
-		echo "PostUp = iptables -A FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT; iptables -A FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE; ip6tables -A FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; ip6tables -t nat -A POSTROUTING -o ${SERVER_IPV6_PUB_NIC} -j MASQUERADE
+		if [[ $installNetfilterFullConeNat == y ]]; then
+			echo "PostUp = iptables -A FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT; iptables -A FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j FULLCONENAT; iptables -t nat -A PREROUTING -i ${SERVER_PUB_NIC} -j FULLCONENAT; ip6tables -A FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; ip6tables -t nat -A POSTROUTING -o ${SERVER_IPV6_PUB_NIC} -j MASQUERADE
+PostDown = iptables -D FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT; iptables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j FULLCONENAT; iptables -t nat -D PREROUTING -i ${SERVER_PUB_NIC} -j FULLCONENAT; ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; ip6tables -t nat -D POSTROUTING -o ${SERVER_IPV6_PUB_NIC} -j MASQUERADE" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
+		else
+			echo "PostUp = iptables -A FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT; iptables -A FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE; ip6tables -A FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; ip6tables -t nat -A POSTROUTING -o ${SERVER_IPV6_PUB_NIC} -j MASQUERADE
 PostDown = iptables -D FORWARD -i ${SERVER_PUB_NIC} -o ${SERVER_WG_NIC} -j ACCEPT; iptables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; iptables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE; ip6tables -D FORWARD -i ${SERVER_WG_NIC} -j ACCEPT; ip6tables -t nat -D POSTROUTING -o ${SERVER_IPV6_PUB_NIC} -j MASQUERADE" >>"/etc/wireguard/${SERVER_WG_NIC}.conf"
+		fi
 	fi
 
 	# Enable routing on the server
@@ -211,6 +220,22 @@ net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
 		echo -e "${ORANGE}You can check if WireGuard is running with: systemctl status wg-quick@${SERVER_WG_NIC}${NC}"
 		echo -e "${ORANGE}If you get something like \"Cannot find device ${SERVER_WG_NIC}\", please reboot!${NC}"
 	fi
+}
+
+function installNetfilterFullConeNat() {
+	apt install autoconf build-essential git libtool libgmp3-dev linux-image-$(uname -r) linux-headers-amd64 pkg-config -y
+	cd ~
+	mkdir fullcone
+	cd fullcone
+	git clone git://git.netfilter.org/libmnl.git --depth=1
+	git clone git://git.netfilter.org/libnftnl.git --depth=1
+	git clone git://git.netfilter.org/iptables.git --depth=1
+	git clone https://github.com/Chion82/netfilter-full-cone-nat.git --depth=1
+	cd ~/fullcone/libmnl && sh autogen.sh && ./configure && make && make install
+	cd ~/fullcone/libnftnl && sh autogen.sh && ./configure && make && make install
+	cd ~/fullcone/netfilter-full-cone-nat && make && modprobe nf_nat && insmod xt_FULLCONENAT.ko && mv ~/fullcone/netfilter-full-cone-nat/xt_FULLCONENAT.ko  /lib/modules/$(uname -r)/ && depmod && echo "xt_FULLCONENAT" > /etc/modules-load.d/fullconenat.conf
+	cp ~/fullcone/netfilter-full-cone-nat/libipt_FULLCONENAT.c ~/fullcone/iptables/extensions/
+	cd ~/fullcone/iptables && ./autogen.sh && ./configure && make && make install
 }
 
 function newClient() {
